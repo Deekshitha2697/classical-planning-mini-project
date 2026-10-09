@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STRIPS Planner Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=JetBrains+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@400;500;600&display=swap">
+<style>
+/* Layout: one control bar over a tabbed workspace; the plan stepper (world on the left, action and goal status on the right) is the main view. */
+:root{
+  --bg:#EDF0F4; --surface:#FFFFFF; --surface2:#F4F6F9; --ink:#141B26; --muted:#58637A; --line:#D3D9E2;
+  --accent:#B8520A; --accent-ink:#FFFFFF;
+  --good:#17703E; --good-bg:#E3F3EA; --bad:#B3261E; --bad-bg:#FBE8E6;
+  --b1:#3F6A99; --b2:#A8651A; --b3:#3F7F5A; --b4:#7458A0;
+  --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --f-body:'Schibsted Grotesk',system-ui,'Segoe UI',sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E131A; --surface:#161D27; --surface2:#1C2431; --ink:#E7EBF1; --muted:#9AA6BA; --line:#2B3647;
+    --accent:#F29A52; --accent-ink:#1A1208;
+    --good:#5ED08A; --good-bg:#12301F; --bad:#FF8F85; --bad-bg:#3A1816;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E131A; --surface:#161D27; --surface2:#1C2431; --ink:#E7EBF1; --muted:#9AA6BA; --line:#2B3647;
+  --accent:#F29A52; --accent-ink:#1A1208;
+  --good:#5ED08A; --good-bg:#12301F; --bad:#FF8F85; --bad-bg:#3A1816;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:28px 56px}
+.kicker{font:500 12px var(--f-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin:0}
+h1{font:700 clamp(30px,6vw,44px)/1.05 var(--f-display);letter-spacing:-.025em;margin:6px 0 10px;text-wrap:balance}
+.lede{max-width:62ch;color:var(--muted);margin:0 0 22px}
+h2,h3,h4{text-wrap:balance}
+.mono{font-family:var(--f-mono)}
+.small{font-size:12.5px}
+.muted{color:var(--muted)}
+
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+label{display:grid;gap:5px;min-width:0;font:500 11.5px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select{width:100%;min-width:0;font:500 15px var(--f-body);padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}
+button{font:600 14px var(--f-body);padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.primary:hover{filter:brightness(1.07)}
+button:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{margin:12px 2px 0;color:var(--muted);max-width:80ch}
+
+.tabs{display:flex;gap:2px;overflow-x:auto;margin-top:22px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 14px;color:var(--muted);white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.panel{padding-top:18px;display:grid;gap:16px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.eyebrow{font:500 11.5px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.cardhead{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stat{background:var(--surface);padding:12px 14px;min-width:0}
+.stat b{display:block;font:700 22px/1.2 var(--f-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stat span{font:500 11px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.verified{margin:0;color:var(--muted);font-size:13.5px}
+.msg{color:var(--ink)}
+
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ctl input[type=range]{flex:1 1 160px;min-width:0;accent-color:var(--accent)}
+.stage{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}
+.actname{font:600 20px/1.25 var(--f-mono);overflow-wrap:anywhere;margin:0 0 10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 12px var(--f-mono);padding:2px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface2);overflow-wrap:anywhere}
+.chip.add{border-color:var(--good);background:var(--good-bg);color:var(--good)}
+.chip.del{border-color:var(--bad);background:var(--bad-bg);color:var(--bad);text-decoration:line-through}
+.chip.met{border-color:var(--good);background:var(--good-bg);color:var(--good)}
+.chip.open{color:var(--muted);border-style:dashed}
+.block{display:grid;gap:6px;margin-bottom:14px}
+details summary{cursor:pointer;font:500 13px var(--f-body);color:var(--muted);margin-bottom:8px}
+
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.steps button{font:500 12.5px var(--f-mono);padding:6px 10px}
+.steps button[aria-current="step"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+/* worlds */
+.bw{min-height:260px;display:flex;flex-direction:column}
+.gripper{height:62px;display:flex;align-items:center;justify-content:center;border-bottom:2px dashed var(--line)}
+.towers{flex:1;display:flex;gap:22px;align-items:flex-end;justify-content:center;min-height:200px;padding-top:10px;flex-wrap:wrap}
+.tower{display:flex;flex-direction:column;gap:2px}
+.blk{width:46px;height:46px;background:var(--c);color:#fff;font:700 18px var(--f-mono);display:grid;place-items:center;border-radius:4px;border:2px solid rgba(0,0,0,.28)}
+.floor{height:6px;background:var(--ink);border-radius:3px;opacity:.85;margin-top:2px}
+.air{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.apt{border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface2);min-height:190px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.apt h4{margin:0;font:600 14px var(--f-mono)}
+.plane{border:1.5px solid var(--accent);border-radius:8px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.plane b{font:600 12.5px var(--f-mono);color:var(--accent)}
+.crate{font:500 12px var(--f-mono);padding:2px 7px;border-radius:4px;background:var(--ink);color:var(--bg)}
+.ground{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:auto;padding-top:8px;border-top:2px solid var(--ink)}
+.zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.zone{border:1px solid var(--line);border-radius:8px;background:var(--surface2);padding:10px;min-height:170px;display:flex;flex-direction:column;gap:10px;align-items:center}
+.zone h4{margin:0;font:600 13px var(--f-mono);align-self:flex-start}
+.tire{width:68px;height:68px;border-radius:50%;border:7px solid var(--ink);display:grid;place-items:center;font:600 11px var(--f-mono)}
+.tire.Flat{border-style:dashed;border-color:var(--bad);color:var(--bad)}
+.tire.Spare{border-color:var(--good);color:var(--good)}
+
+/* tables */
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font:500 11px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}
+td.m{font-family:var(--f-mono);font-size:12.5px}
+tr.pick td{background:var(--surface2)}
+.bar{height:8px;border-radius:4px;background:var(--accent);min-width:2px}
+.tag{font:500 11px var(--f-mono);padding:1px 7px;border-radius:999px;border:1px solid var(--good);color:var(--good);background:var(--good-bg);margin-left:6px}
+.tag.warn{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+pre{margin:0;padding:14px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;overflow-x:auto;font:400 12.5px/1.55 var(--f-mono);tab-size:4}
+.twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+
+@media (max-width:760px){.stage{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:no-preference){button{transition:border-color .15s,filter .15s}}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <p class="kicker">Classical planning · STRIPS</p>
+    <h1>STRIPS Planner Lab</h1>
+    <p class="lede">Choose a domain, a problem and a search algorithm. The planner runs in your browser, then you can step through the plan one action at a time, read the search log and compare algorithms on the same problem.</p>
+  </header>
+
+  <section class="controls" aria-label="Planner settings">
+    <label for="domain">Domain<select id="domain"></select></label>
+    <label for="problem">Problem<select id="problem"></select></label>
+    <label for="algo">Algorithm<select id="algo"></select></label>
+    <button id="run" class="primary" type="button">Run planner</button>
+  </section>
+  <p id="algoNote" class="note"></p>
+
+  <nav class="tabs" role="tablist" aria-label="Results">
+    <button role="tab" id="t-plan" data-tab="plan" aria-selected="true" type="button">Plan</button>
+    <button role="tab" id="t-search" data-tab="search" aria-selected="false" type="button">Search log</button>
+    <button role="tab" id="t-compare" data-tab="compare" aria-selected="false" type="button">Compare algorithms</button>
+    <button role="tab" id="t-problem" data-tab="problem" aria-selected="false" type="button">Problem</button>
+    <button role="tab" id="t-code" data-tab="code" aria-selected="false" type="button">Python code</button>
+  </nav>
+
+  <div id="p-plan" class="panel" role="tabpanel"></div>
+  <div id="p-search" class="panel" role="tabpanel" hidden></div>
+  <div id="p-compare" class="panel" role="tabpanel" hidden></div>
+  <div id="p-problem" class="panel" role="tabpanel" hidden></div>
+  <div id="p-code" class="panel" role="tabpanel" hidden></div>
+</main>
+
+<script>
+/* ======================= Planning engine ======================= */
+const LIMIT = 200000, LOGMAX = 150;
+
+function popcount(x){ let c = 0; while (x){ x &= x - 1; c++; } return c; }
+
+/* ---- Domains: each builder returns facts, ground actions, initial state and goal ---- */
+function blocksProblem(blocks, initT, goalT){
+  const facts = ['handempty'], actions = [];
+  for (const x of blocks){
+    facts.push(`ontable(${x})`, `clear(${x})`, `holding(${x})`);
+    for (const y of blocks) if (x !== y) facts.push(`on(${x},${y})`);
+  }
+  for (const x of blocks){
+    actions.push({name:`pickup(${x})`, pre:[`clear(${x})`,`ontable(${x})`,'handempty'], add:[`holding(${x})`], del:[`clear(${x})`,`ontable(${x})`,'handempty']});
+    actions.push({name:`putdown(${x})`, pre:[`holding(${x})`], add:[`ontable(${x})`,`clear(${x})`,'handempty'], del:[`holding(${x})`]});
+    for (const y of blocks) if (x !== y){
+      actions.push({name:`stack(${x},${y})`, pre:[`holding(${x})`,`clear(${y})`], add:[`on(${x},${y})`,`clear(${x})`,'handempty'], del:[`holding(${x})`,`clear(${y})`]});
+      actions.push({name:`unstack(${x},${y})`, pre:[`on(${x},${y})`,`clear(${x})`,'handempty'], add:[`holding(${x})`,`clear(${y})`], del:[`on(${x},${y})`,`clear(${x})`,'handempty']});
+    }
+  }
+  const init = ['handempty'], goal = [];
+  for (const t of initT){
+    init.push(`ontable(${t[0]})`);
+    for (let i = 1; i < t.length; i++) init.push(`on(${t[i]},${t[i-1]})`);
+    init.push(`clear(${t[t.length-1]})`);
+  }
+  for (const t of goalT) for (let i = 1; i < t.length; i++) goal.push(`on(${t[i]},${t[i-1]})`);
+  return {facts, actions, init, goal, objects:{blocks}};
+}
+
+function cargoProblem(cargos, planes, airports, init, goal){
+  const facts = [], actions = [];
+  for (const a of airports){
+    for (const c of cargos) facts.push(`At(${c},${a})`);
+    for (const p of planes) facts.push(`At(${p},${a})`);
+  }
+  for (const c of cargos) for (const p of planes) facts.push(`In(${c},${p})`);
+  for (const c of cargos) for (const p of planes) for (const a of airports){
+    actions.push({name:`Load(${c},${p},${a})`, pre:[`At(${c},${a})`,`At(${p},${a})`], add:[`In(${c},${p})`], del:[`At(${c},${a})`]});
+    actions.push({name:`Unload(${c},${p},${a})`, pre:[`In(${c},${p})`,`At(${p},${a})`], add:[`At(${c},${a})`], del:[`In(${c},${p})`]});
+  }
+  for (const p of planes) for (const a of airports) for (const b of airports) if (a !== b)
+    actions.push({name:`Fly(${p},${a},${b})`, pre:[`At(${p},${a})`], add:[`At(${p},${b})`], del:[`At(${p},${a})`]});
+  return {facts, actions, init, goal, objects:{cargos, planes, airports}};
+}
+
+function tireProblem(goal){
+  const all = ['At(Flat,Axle)','At(Flat,Ground)','At(Spare,Trunk)','At(Spare,Ground)','At(Spare,Axle)'];
+  return {
+    facts:[...all, 'AxleEmpty'],
+    actions:[
+      {name:'Remove(Spare,Trunk)', pre:['At(Spare,Trunk)'], add:['At(Spare,Ground)'], del:['At(Spare,Trunk)']},
+      {name:'Remove(Flat,Axle)', pre:['At(Flat,Axle)'], add:['At(Flat,Ground)','AxleEmpty'], del:['At(Flat,Axle)']},
+      {name:'PutOn(Spare,Axle)', pre:['At(Spare,Ground)','AxleEmpty'], add:['At(Spare,Axle)'], del:['At(Spare,Ground)','AxleEmpty']},
+      {name:'LeaveOvernight', pre:[], add:[], del:all}
+    ],
+    init:['At(Flat,Axle)','At(Spare,Trunk)'], goal,
+    objects:{}
+  };
+}
+
+/* ---- World renderers ---- */
+function worldBlocks(P, set){
+  const bl = P.raw.objects.blocks;
+  const held = bl.find(x => set.has(`holding(${x})`));
+  const blk = x => `<div class="blk" style="--c:var(--b${bl.indexOf(x)+1})">${x}</div>`;
+  const towers = bl.filter(x => set.has(`ontable(${x})`)).map(b => {
+    const col = [b]; let cur = b;
+    for (;;){ const up = bl.find(y => set.has(`on(${y},${cur})`)); if (!up) break; col.push(up); cur = up; }
+    return col;
+  });
+  return `<div class="bw"><div class="gripper">${held ? blk(held) : '<span class="muted small mono">hand empty</span>'}</div>
+    <div class="towers">${towers.map(c => `<div class="tower">${c.slice().reverse().map(blk).join('')}</div>`).join('')}</div><div class="floor"></div></div>`;
+}
+function worldCargo(P, set){
+  const {cargos, planes, airports} = P.raw.objects;
+  return `<div class="air">${airports.map(a => {
+    const here = planes.filter(p => set.has(`At(${p},${a})`));
+    const ground = cargos.filter(c => set.has(`At(${c},${a})`));
+    return `<div class="apt"><h4>${a}</h4>${here.map(p => {
+      const load = cargos.filter(c => set.has(`In(${c},${p})`));
+      return `<div class="plane"><b>${p}</b>${load.map(c => `<span class="crate">${c}</span>`).join('') || '<span class="muted small">empty</span>'}</div>`;
+    }).join('')}<div class="ground">${ground.map(c => `<span class="crate">${c}</span>`).join('') || '<span class="muted small">no cargo</span>'}</div></div>`;
+  }).join('')}</div>`;
+}
+function worldTire(P, set){
+  const zones = ['Trunk','Axle','Ground'], tires = ['Flat','Spare'];
+  const where = t => zones.find(z => set.has(`At(${t},${z})`));
+  const lost = tires.filter(t => !where(t));
+  const zone = (z, extra) => `<div class="zone"><h4>${z}</h4>${tires.filter(t => where(t) === z).map(t => `<div class="tire ${t}">${t}</div>`).join('')}${extra || ''}</div>`;
+  return `<div class="zones">${zone('Trunk')}${zone('Axle', set.has('AxleEmpty') ? '<span class="muted small mono">bare axle</span>' : '')}${zone('Ground')}${lost.length ? `<div class="zone"><h4>Gone</h4>${lost.map(t => `<div class="tire ${t}">${t}</div>`).join('')}</div>` : ''}</div>`;
+}
+
+const DOMAINS = {
+  blocks:{
+    name:'Blocks World', render:worldBlocks,
+    schemas:[
+      'pickup(x)      pre: clear(x), ontable(x), handempty',
+      '               add: holding(x)',
+      '               del: clear(x), ontable(x), handempty',
+      'putdown(x)     pre: holding(x)',
+      '               add: ontable(x), clear(x), handempty',
+      '               del: holding(x)',
+      'stack(x,y)     pre: holding(x), clear(y)',
+      '               add: on(x,y), clear(x), handempty',
+      '               del: holding(x), clear(y)',
+      'unstack(x,y)   pre: on(x,y), clear(x), handempty',
+      '               add: holding(x), clear(y)',
+      '               del: on(x,y), clear(x), handempty'
+    ],
+    problems:[
+      {id:'sussman', name:'Sussman anomaly (3 blocks)', desc:'C sits on A and B is on the table. Build the tower A on B on C. The two goals interfere, so a planner that finishes one goal first has to undo it.', build:() => blocksProblem(['A','B','C'], [['A','C'],['B']], [['C','B','A']])},
+      {id:'reverse', name:'Reverse a tower (4 blocks)', desc:'A four-block tower is turned upside down, so the block that was on top ends up at the bottom.', build:() => blocksProblem(['A','B','C','D'], [['D','C','B','A']], [['A','B','C','D']])},
+      {id:'merge', name:'Merge two towers (4 blocks)', desc:'Two towers, B on A and D on C, are rebuilt as a single tower with D at the bottom and A on top.', build:() => blocksProblem(['A','B','C','D'], [['A','B'],['C','D']], [['D','C','B','A']])}
+    ]
+  },
+  cargo:{
+    name:'Air Cargo', render:worldCargo,
+    schemas:[
+      'Load(c,p,a)      pre: At(c,a), At(p,a)',
+      '                 add: In(c,p)',
+      '                 del: At(c,a)',
+      'Unload(c,p,a)    pre: In(c,p), At(p,a)',
+      '                 add: At(c,a)',
+      '                 del: In(c,p)',
+      'Fly(p,from,to)   pre: At(p,from)',
+      '                 add: At(p,to)',
+      '                 del: At(p,from)'
+    ],
+    problems:[
+      {id:'cargo1', name:'Two cargo, two airports', desc:'Swap two cargo items between SFO and JFK, with one plane waiting at each airport.', build:() => cargoProblem(['C1','C2'], ['P1','P2'], ['SFO','JFK'],
+        ['At(C1,SFO)','At(C2,JFK)','At(P1,SFO)','At(P2,JFK)'], ['At(C1,JFK)','At(C2,SFO)'])},
+      {id:'cargo2', name:'Three cargo, three airports', desc:'Three cargo items, three planes and three airports. C1 must reach JFK, while C2 and C3 both go to SFO.', build:() => cargoProblem(['C1','C2','C3'], ['P1','P2','P3'], ['SFO','JFK','ATL'],
+        ['At(C1,SFO)','At(C2,JFK)','At(C3,ATL)','At(P1,SFO)','At(P2,JFK)','At(P3,ATL)'], ['At(C1,JFK)','At(C2,SFO)','At(C3,SFO)'])}
+    ]
+  },
+  tire:{
+    name:'Spare Tire', render:worldTire,
+    schemas:[
+      'Remove(Spare,Trunk)  pre: At(Spare,Trunk)',
+      '                     add: At(Spare,Ground)',
+      '                     del: At(Spare,Trunk)',
+      'Remove(Flat,Axle)    pre: At(Flat,Axle)',
+      '                     add: At(Flat,Ground), AxleEmpty',
+      '                     del: At(Flat,Axle)',
+      'PutOn(Spare,Axle)    pre: At(Spare,Ground), AxleEmpty',
+      '                     add: At(Spare,Axle)',
+      '                     del: At(Spare,Ground), AxleEmpty',
+      'LeaveOvernight       pre: (none)',
+      '                     del: every At(tire, place) fact'
+    ],
+    problems:[
+      {id:'tire1', name:'Change the flat tire', desc:'Swap the flat tire on the axle for the spare in the trunk. LeaveOvernight is always applicable, but it deletes every tire fact, so a correct plan never uses it.', build:() => tireProblem(['At(Spare,Axle)','At(Flat,Ground)'])}
+    ]
+  }
+};
+
+function compile(raw){
+  if (raw.facts.length > 31) throw new Error('Too many facts for bitmask states');
+  const idx = new Map(raw.facts.map((f, i) => [f, i]));
+  const mi = l => l.map(f => idx.get(f));
+  const m = l => mi(l).reduce((s, i) => s | (1 << i), 0);
+  const acts = raw.actions.map(a => ({label:a.name, pre:m(a.pre), add:m(a.add), del:m(a.del), preIdx:mi(a.pre), addIdx:mi(a.add)}));
+  return {raw, facts:raw.facts, nf:raw.facts.length, acts, init:m(raw.init), goal:m(raw.goal), goalIdx:mi(raw.goal)};
+}
+function maskFacts(P, s){ const out = []; for (let i = 0; i < P.nf; i++) if ((s >> i) & 1) out.push(P.facts[i]); return out; }
+
+/* ---- Delete-relaxation heuristics ---- */
+function relaxed(P, s, mode){
+  const c = new Array(P.nf).fill(Infinity);
+  for (let i = 0; i < P.nf; i++) if ((s >> i) & 1) c[i] = 0;
+  let ch = true;
+  while (ch){
+    ch = false;
+    for (const a of P.acts){
+      let pc = 0, ok = true;
+      for (const p of a.preIdx){ const v = c[p]; if (v === Infinity){ ok = false; break; } pc = mode === 'add' ? pc + v : Math.max(pc, v); }
+      if (!ok) continue;
+      const nc = pc + 1;
+      for (const q of a.addIdx) if (nc < c[q]){ c[q] = nc; ch = true; }
+    }
+  }
+  let g = 0;
+  for (const q of P.goalIdx){ const v = c[q]; if (v === Infinity) return Infinity; g = mode === 'add' ? g + v : Math.max(g, v); }
+  return g;
+}
+
+/* ---- Binary heap on [priority, tiebreak, id] ---- */
+const less = (x, y) => (x[0] - y[0]) || (x[1] - y[1]) || (x[2] - y[2]);
+function heapPush(a, x){
+  a.push(x); let i = a.length - 1;
+  while (i > 0){ const p = (i - 1) >> 1; if (less(a[i], a[p]) < 0){ [a[i], a[p]] = [a[p], a[i]]; i = p; } else break; }
+}
+function heapPop(a){
+  const top = a[0], last = a.pop();
+  if (a.length){
+    a[0] = last; let i = 0;
+    for (;;){
+      const L = 2*i + 1, R = L + 1; let m = i;
+      if (L < a.length && less(a[L], a[m]) < 0) m = L;
+      if (R < a.length && less(a[R], a[m]) < 0) m = R;
+      if (m === i) break;
+      [a[i], a[m]] = [a[m], a[i]]; i = m;
+    }
+  }
+  return top;
+}
+
+/* ---- Result assembly: rebuild the plan and replay it to check it ---- */
+function finish(P, algo, nodes, found, stats, log, hit, backward){
+  let plan = [];
+  if (found >= 0){
+    let id = found;
+    while (nodes[id].p >= 0){ plan.push(nodes[id].a); id = nodes[id].p; }
+    if (!backward) plan.reverse();
+  }
+  let s = P.init, valid = found >= 0;
+  const states = [s];
+  if (found >= 0){
+    for (const ai of plan){
+      const a = P.acts[ai];
+      if ((s & a.pre) !== a.pre) valid = false;
+      s = (s & ~a.del) | a.add; states.push(s);
+    }
+    if ((s & P.goal) !== P.goal) valid = false;
+  }
+  return {P, algo, found:found >= 0, hit, plan, states, valid, stats, log};
+}
+
+/* ---- Forward state-space search ---- */
+function forward(P, algo){
+  const t0 = performance.now();
+  const kind = algo.kind;
+  const hf = algo.h === 'max' ? s => relaxed(P, s, 'max') : algo.h === 'add' ? s => relaxed(P, s, 'add') : () => null;
+  const h0 = hf(P.init);
+  const nodes = [{s:P.init, p:-1, a:-1, g:0, h:h0}];
+  const seen = new Map([[P.init, 0]]);
+  const q = [0]; let head = 0; const heap = [];
+  if (kind === 'astar' || kind === 'greedy'){ q.length = 0; if (isFinite(h0)) heapPush(heap, [kind === 'astar' ? h0 : h0, 0, 0]); }
+  const size = () => kind === 'bfs' ? q.length - head : kind === 'dfs' ? q.length : heap.length;
+  const log = []; let expanded = 0, generated = 1, maxF = 1, found = -1, hit = false;
+  while (size() > 0){
+    let id;
+    if (kind === 'bfs') id = q[head++]; else if (kind === 'dfs') id = q.pop(); else id = heapPop(heap)[2];
+    const n = nodes[id];
+    if (kind === 'astar' && n.g > seen.get(n.s)) continue;
+    expanded++;
+    if (log.length < LOGMAX) log.push({i:expanded, g:n.g, h:n.h, f:n.h === null ? null : n.g + n.h, via:n.a >= 0 ? P.acts[n.a].label : 'initial state', n:popcount(n.s)});
+    if ((n.s & P.goal) === P.goal){ found = id; break; }
+    if (expanded >= LIMIT){ hit = true; break; }
+    for (let i = 0; i < P.acts.length; i++){
+      const a = P.acts[i];
+      if ((n.s & a.pre) !== a.pre) continue;
+      const ns = (n.s & ~a.del) | a.add, g2 = n.g + 1;
+      const old = seen.get(ns);
+      if (kind === 'astar'){ if (old !== undefined && old <= g2) continue; }
+      else if (old !== undefined) continue;
+      const h = hf(ns);
+      if (h !== null && !isFinite(h)) continue;
+      seen.set(ns, g2);
+      nodes.push({s:ns, p:id, a:i, g:g2, h}); generated++;
+      const nid = nodes.length - 1;
+      if (kind === 'bfs' || kind === 'dfs') q.push(nid);
+      else heapPush(heap, [kind === 'astar' ? g2 + h : h, kind === 'astar' ? h : g2, nid]);
+    }
+    maxF = Math.max(maxF, size());
+  }
+  return finish(P, algo, nodes, found, {expanded, generated, maxF, ms:performance.now() - t0}, log, hit, false);
+}
+
+/* ---- Backward search: regress the goal until it holds in the initial state ---- */
+function backward(P, algo){
+  const t0 = performance.now();
+  const nodes = [{s:P.goal, p:-1, a:-1, g:0}];
+  const seen = new Set([P.goal]);
+  let head = 0, expanded = 0, found = -1, hit = false, maxF = 1;
+  const log = [];
+  while (head < nodes.length){
+    const id = head++, n = nodes[id];
+    expanded++;
+    if (log.length < LOGMAX) log.push({i:expanded, g:n.g, h:null, f:null, via:n.a >= 0 ? 'regress through ' + P.acts[n.a].label : 'goal', n:popcount(n.s)});
+    if ((n.s & ~P.init) === 0){ found = id; break; }
+    if (expanded >= LIMIT){ hit = true; break; }
+    for (let i = 0; i < P.acts.length; i++){
+      const a = P.acts[i];
+      if ((a.add & n.s) === 0 || (a.del & n.s) !== 0) continue;
+      const ps = (n.s & ~a.add) | a.pre;
+      if (seen.has(ps)) continue;
+      seen.add(ps);
+      nodes.push({s:ps, p:id, a:i, g:n.g + 1});
+    }
+    maxF = Math.max(maxF, nodes.length - head);
+  }
+  return finish(P, algo, nodes, found, {expanded, generated:nodes.length, maxF, ms:performance.now() - t0}, log, hit, true);
+}
+
+const ALGOS = [
+  {id:'bfs', name:'Forward BFS', kind:'bfs', dir:'f', note:'Expands states level by level, so the first plan it finds has the fewest actions.'},
+  {id:'dfs', name:'Forward DFS', kind:'dfs', dir:'f', note:'Follows one branch as deep as it goes. It finds a plan quickly in a small space, but the plan is usually long.'},
+  {id:'astar', name:'Forward A* (h_max)', kind:'astar', h:'max', dir:'f', note:'Ranks states by actions used so far plus h_max, an estimate that never overshoots, so the plan found is a shortest one.'},
+  {id:'greedy', name:'Greedy best-first (h_add)', kind:'greedy', h:'add', dir:'f', note:'Always expands the state with the lowest h_add estimate. It usually expands far fewer states, with no promise of a shortest plan.'},
+  {id:'back', name:'Backward regression BFS', kind:'bfs', dir:'b', note:'Starts from the goal and regresses it through relevant actions until every required fact holds in the initial state. Regressed goal sets can be inconsistent, so it may reach the node limit.'}
+];
+function runAlgo(P, algo){ return algo.dir === 'b' ? backward(P, algo) : forward(P, algo); }
+
+/* ======================= Interface ======================= */
+const PYTHON_CODE = String.raw`from collections import deque
+import heapq
+
+class Action:
+    def __init__(self, name, pre, add, delete):
+        self.name = name
+        self.pre, self.add, self.delete = map(frozenset, (pre, add, delete))
+
+    def applicable(self, state):
+        return self.pre <= state
+
+    def apply(self, state):
+        return (state - self.delete) | self.add
+
+
+def forward_bfs(init, goal, actions):
+    init, goal = frozenset(init), frozenset(goal)
+    frontier, seen, expanded = deque([(init, [])]), {init}, 0
+    while frontier:
+        state, plan = frontier.popleft()
+        expanded += 1
+        if goal <= state:
+            return plan, expanded
+        for a in actions:
+            if a.applicable(state):
+                nxt = a.apply(state)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    frontier.append((nxt, plan + [a.name]))
+    return None, expanded
+
+
+def h_max(state, goal, actions):
+    cost = {f: 0 for f in state}
+    changed = True
+    while changed:
+        changed = False
+        for a in actions:
+            if all(p in cost for p in a.pre):
+                c = 1 + max((cost[p] for p in a.pre), default=0)
+                for f in a.add:
+                    if c < cost.get(f, float("inf")):
+                        cost[f] = c
+                        changed = True
+    if any(g not in cost for g in goal):
+        return float("inf")
+    return max((cost[g] for g in goal), default=0)
+
+
+def astar(init, goal, actions):
+    init, goal = frozenset(init), frozenset(goal)
+    tie, expanded = 0, 0
+    open_ = [(h_max(init, goal, actions), 0, tie, init, [])]
+    best = {init: 0}
+    while open_:
+        f, g, _, state, plan = heapq.heappop(open_)
+        if g > best.get(state, float("inf")):
+            continue
+        expanded += 1
+        if goal <= state:
+            return plan, expanded
+        for a in actions:
+            if a.applicable(state):
+                nxt, ng = a.apply(state), g + 1
+                if ng < best.get(nxt, float("inf")):
+                    best[nxt] = ng
+                    h = h_max(nxt, goal, actions)
+                    if h < float("inf"):
+                        tie += 1
+                        heapq.heappush(open_, (ng + h, ng, tie, nxt, plan + [a.name]))
+    return None, expanded
+
+
+def backward_bfs(init, goal, actions):
+    init, start = frozenset(init), frozenset(goal)
+    frontier, seen, expanded = deque([(start, [])]), {start}, 0
+    while frontier:
+        g, plan = frontier.popleft()
+        expanded += 1
+        if g <= init:
+            return plan, expanded
+        for a in actions:
+            # relevant: achieves something in g and deletes nothing in g
+            if (a.add & g) and not (a.delete & g):
+                prev = (g - a.add) | a.pre
+                if prev not in seen:
+                    seen.add(prev)
+                    frontier.append((prev, [a.name] + plan))
+    return None, expanded
+
+
+# Example: Blocks World with blocks A, B, C
+def blocks_actions(blocks):
+    acts = []
+    for x in blocks:
+        acts.append(Action(f"pickup({x})",
+            [f"clear({x})", f"ontable({x})", "handempty"],
+            [f"holding({x})"],
+            [f"clear({x})", f"ontable({x})", "handempty"]))
+        acts.append(Action(f"putdown({x})",
+            [f"holding({x})"],
+            [f"ontable({x})", f"clear({x})", "handempty"],
+            [f"holding({x})"]))
+        for y in blocks:
+            if x != y:
+                acts.append(Action(f"stack({x},{y})",
+                    [f"holding({x})", f"clear({y})"],
+                    [f"on({x},{y})", f"clear({x})", "handempty"],
+                    [f"holding({x})", f"clear({y})"]))
+                acts.append(Action(f"unstack({x},{y})",
+                    [f"on({x},{y})", f"clear({x})", "handempty"],
+                    [f"holding({x})", f"clear({y})"],
+                    [f"on({x},{y})", f"clear({x})", "handempty"]))
+    return acts
+
+
+if __name__ == "__main__":
+    acts = blocks_actions("ABC")
+    init = {"ontable(A)", "on(C,A)", "ontable(B)", "clear(C)", "clear(B)", "handempty"}
+    goal = {"on(A,B)", "on(B,C)"}
+    for solver in (forward_bfs, astar, backward_bfs):
+        plan, n = solver(init, goal, acts)
+        print(solver.__name__, len(plan), "actions,", n, "expanded")
+        print("  ", plan)
+`;
+
+function boot(){
+  const $ = s => document.querySelector(s);
+  const fmt = n => n.toLocaleString('en-US');
+  const ms = t => t < 10 ? t.toFixed(2) + ' ms' : t < 1000 ? t.toFixed(0) + ' ms' : (t / 1000).toFixed(2) + ' s';
+  const chips = (list, cls) => list.map(f => `<span class="chip ${cls || ''}">${f}</span>`).join('');
+  let P = null, R = null, cur = 0, timer = null, compareStale = true, tab = 'plan';
+
+  const domSel = $('#domain'), probSel = $('#problem'), algoSel = $('#algo');
+  domSel.innerHTML = Object.entries(DOMAINS).map(([k, d]) => `<option value="${k}">${d.name}</option>`).join('');
+  algoSel.innerHTML = ALGOS.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  algoSel.value = 'astar';
+
+  const dom = () => DOMAINS[domSel.value];
+  const algo = () => ALGOS.find(a => a.id === algoSel.value);
+  function fillProblems(){
+    probSel.innerHTML = dom().problems.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  }
+
+  function stopPlay(){ if (timer){ clearInterval(timer); timer = null; } const b = $('#play'); if (b) b.textContent = 'Play'; }
+
+  function load(){
+    stopPlay();
+    const pr = dom().problems.find(p => p.id === probSel.value);
+    P = compile(pr.build()); P.desc = pr.desc; P.pname = pr.name;
+    compareStale = true;
+    $('#algoNote').textContent = algo().note;
+    run();
+    renderProblem();
+    if (tab === 'compare') runCompare();
+  }
+  function run(){
+    stopPlay();
+    $('#algoNote').textContent = algo().note;
+    R = runAlgo(P, algo()); cur = 0;
+    renderPlan(); renderSearch();
+  }
+
+  const statsHTML = () => {
+    const s = R.stats;
+    const items = [
+      ['Result', R.found ? 'Plan found' : R.hit ? 'Limit reached' : 'No plan'],
+      ['Plan length', R.found ? R.plan.length + (R.plan.length === 1 ? ' action' : ' actions') : '–'],
+      ['Expanded', fmt(s.expanded)], ['Generated', fmt(s.generated)], ['Time', ms(s.ms)]
+    ];
+    return `<div class="stats">${items.map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
+  };
+
+  function renderPlan(){
+    const el = $('#p-plan');
+    if (!R.found){
+      el.innerHTML = statsHTML() + `<div class="card msg">${R.hit
+        ? `The search stopped after ${fmt(LIMIT)} expansions without reaching the goal. Try a forward algorithm with a heuristic, or a smaller problem.`
+        : 'The search space was exhausted and no sequence of actions reaches the goal from the initial state.'}</div>`;
+      return;
+    }
+    el.innerHTML = statsHTML() + `
+      <p class="verified">${R.valid ? 'Checked by replaying the plan from the initial state: every precondition held and every goal fact is true at the end.' : 'Replay check failed for this plan.'}</p>
+      <div class="ctl">
+        <button id="first" type="button">Start</button><button id="prev" type="button">Back</button>
+        <button id="next" class="primary" type="button">Next</button><button id="play" type="button">Play</button>
+        <input id="scrub" type="range" min="0" max="${R.plan.length}" value="0" aria-label="Plan step">
+      </div>
+      <div class="stage">
+        <div class="card"><div class="cardhead"><p class="eyebrow" style="margin:0">World</p><span id="stepLabel" class="mono small muted"></span></div><div id="world"></div></div>
+        <div class="card">
+          <p class="eyebrow">Action</p><p id="actName" class="actname"></p>
+          <div class="block"><p class="eyebrow" id="effLabel" style="margin:0"></p><div id="effects" class="chips"></div></div>
+          <div class="block"><p class="eyebrow" style="margin:0">Goal</p><div id="goalChips" class="chips"></div></div>
+          <details><summary id="factsSum"></summary><div id="facts" class="chips"></div></details>
+        </div>
+      </div>
+      <div class="card"><p class="eyebrow">Plan, in order</p><ol id="stepList" class="steps"></ol></div>`;
+    $('#stepList').innerHTML = [`<li><button type="button" data-k="0">start</button></li>`]
+      .concat(R.plan.map((a, i) => `<li><button type="button" data-k="${i+1}">${i+1}. ${P.acts[a].label}</button></li>`)).join('');
+    $('#stepList').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(+b.dataset.k); });
+    $('#first').onclick = () => go(0);
+    $('#prev').onclick = () => go(cur - 1);
+    $('#next').onclick = () => go(cur + 1);
+    $('#scrub').oninput = e => go(+e.target.value);
+    $('#play').onclick = () => {
+      if (timer){ stopPlay(); return; }
+      if (cur >= R.plan.length) go(0);
+      $('#play').textContent = 'Pause';
+      timer = setInterval(() => { if (cur >= R.plan.length) stopPlay(); else go(cur + 1); }, 1000);
+    };
+    go(0);
+  }
+
+  function go(k){
+    if (!R || !R.found) return;
+    cur = Math.max(0, Math.min(R.plan.length, k));
+    if (cur >= R.plan.length && timer) stopPlay();
+    const s = R.states[cur], now = new Set(maskFacts(P, s));
+    $('#stepLabel').textContent = `state ${cur} of ${R.plan.length}`;
+    $('#world').innerHTML = dom().render(P, now);
+    $('#scrub').value = cur;
+    $('#prev').disabled = $('#first').disabled = cur === 0;
+    $('#next').disabled = cur === R.plan.length;
+    if (cur === 0){
+      $('#actName').textContent = 'Initial state';
+      $('#effLabel').textContent = 'True at the start';
+      $('#effects').innerHTML = chips(maskFacts(P, s));
+    } else {
+      const a = P.acts[R.plan[cur - 1]], prev = new Set(maskFacts(P, R.states[cur - 1]));
+      const added = [...now].filter(f => !prev.has(f)), removed = [...prev].filter(f => !now.has(f));
+      $('#actName').textContent = a.label;
+      $('#effLabel').textContent = 'Changed by this action';
+      $('#effects').innerHTML = chips(added, 'add') + chips(removed, 'del') || '<span class="muted small">no change</span>';
+    }
+    $('#goalChips').innerHTML = P.raw.goal.map(f => `<span class="chip ${now.has(f) ? 'met' : 'open'}">${now.has(f) ? '✓' : '○'} ${f}</span>`).join('');
+    $('#factsSum').textContent = `All ${now.size} facts true in this state`;
+    $('#facts').innerHTML = chips([...now]);
+    document.querySelectorAll('#stepList button').forEach(b => {
+      if (+b.dataset.k === cur) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+    });
+  }
+
+  function renderSearch(){
+    const a = algo(), back = a.dir === 'b', showH = a.h;
+    const rows = R.log.map(r => `<tr><td>${r.i}</td><td>${r.g}</td>${showH ? `<td>${r.h === null ? '–' : r.h}</td><td>${r.f === null ? '–' : r.f}</td>` : ''}<td class="m">${r.via}</td><td>${r.n}</td></tr>`).join('');
+    $('#p-search').innerHTML = `<div class="card"><p class="eyebrow">${a.name}</p>
+      <p style="margin:0 0 12px;max-width:70ch">Showing the first ${R.log.length} of ${fmt(R.stats.expanded)} expansions, in the order the algorithm took them. ${back ? 'Each row is a set of required facts, and depth counts the actions regressed so far.' : 'Depth is the number of actions used to reach that state.'} Peak frontier size was ${fmt(R.stats.maxF)}.</p>
+      <div class="scroll"><table><thead><tr><th>#</th><th>Depth</th>${showH ? '<th>h</th><th>f</th>' : ''}<th>${back ? 'Reached by' : 'Reached by'}</th><th>${back ? 'Facts required' : 'Facts true'}</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+
+  function runCompare(){
+    const el = $('#p-compare');
+    el.innerHTML = '<div class="card">Running all five algorithms on this problem…</div>';
+    setTimeout(() => {
+      const res = ALGOS.map(a => runAlgo(P, a));
+      compareStale = false;
+      const lens = res.filter(r => r.found).map(r => r.plan.length), best = Math.min(...lens);
+      const maxE = Math.max(...res.map(r => r.stats.expanded));
+      const rows = res.map(r => {
+        const w = Math.max(1, Math.round(100 * Math.log10(1 + r.stats.expanded) / Math.log10(1 + maxE)));
+        const status = r.found ? (r.plan.length === best ? `<span class="tag">shortest</span>` : `<span class="tag warn">+${r.plan.length - best} longer</span>`) : `<span class="tag warn">${r.hit ? 'limit' : 'no plan'}</span>`;
+        return `<tr><td><b>${r.algo.name}</b></td><td>${r.found ? r.plan.length : '–'}${status}</td><td>${fmt(r.stats.expanded)}</td><td>${fmt(r.stats.generated)}</td><td>${ms(r.stats.ms)}</td><td style="min-width:120px"><div class="bar" style="width:${w}%"></div></td></tr>`;
+      }).join('');
+      el.innerHTML = `<div class="card"><p class="eyebrow">${P.pname}</p>
+        <div class="scroll"><table><thead><tr><th>Algorithm</th><th>Plan length</th><th>Expanded</th><th>Generated</th><th>Time</th><th>Expanded (log scale)</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="small muted" style="margin:12px 0 0;max-width:70ch">Breadth-first and A* with h_max return a shortest plan. Greedy search and DFS trade plan length for fewer expansions or simpler bookkeeping. Runs stop at ${fmt(LIMIT)} expansions.</p></div>`;
+    }, 30);
+  }
+
+  function renderProblem(){
+    $('#p-problem').innerHTML = `<div class="card"><p class="eyebrow">${P.pname}</p><p style="margin:0;max-width:70ch">${P.desc}</p></div>
+      <div class="twocol">
+        <div class="card"><p class="eyebrow">Initial state</p><div class="chips">${chips(P.raw.init)}</div></div>
+        <div class="card"><p class="eyebrow">Goal</p><div class="chips">${chips(P.raw.goal)}</div></div>
+      </div>
+      <div class="card"><p class="eyebrow">Action schemas in ${dom().name}</p><div class="scroll"><pre>${dom().schemas.join('\n')}</pre></div>
+        <p class="small muted" style="margin:12px 0 0">This problem grounds to ${P.nf} facts and ${P.acts.length} actions. A state is the set of facts that are true; an action applies when its preconditions are all in the state, then removes its delete list and adds its add list.</p></div>`;
+  }
+
+  function renderCode(){
+    $('#p-code').innerHTML = `<div class="card"><div class="cardhead"><p class="eyebrow" style="margin:0">Same algorithms in plain Python</p><button id="copy" type="button">Copy code</button></div>
+      <div class="scroll"><pre id="codeblock"></pre></div></div>`;
+    $('#codeblock').textContent = PYTHON_CODE;
+    $('#copy').onclick = async () => {
+      const b = $('#copy');
+      try { await navigator.clipboard.writeText(PYTHON_CODE); b.textContent = 'Copied'; }
+      catch (e){
+        const r = document.createRange(); r.selectNodeContents($('#codeblock'));
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent = 'Selected, press Ctrl+C';
+      }
+      setTimeout(() => { b.textContent = 'Copy code'; }, 2200);
+    };
+  }
+
+  function showTab(t){
+    tab = t;
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+    for (const k of ['plan','search','compare','problem','code']) $('#p-' + k).hidden = k !== t;
+    if (t !== 'plan') stopPlay();
+    if (t === 'compare' && compareStale) runCompare();
+  }
+
+  document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
+  domSel.onchange = () => { fillProblems(); load(); };
+  probSel.onchange = load;
+  algoSel.onchange = run;
+  $('#run').onclick = run;
+
+  fillProblems(); renderCode(); load();
+}
+
+if (typeof document !== 'undefined') boot();
+</script>
+
+</body>
+</html>
